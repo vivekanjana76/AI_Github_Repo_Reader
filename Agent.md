@@ -1,73 +1,108 @@
-You are a senior AI software engineer building a production-ready application.
+You are a senior full-stack AI engineer working on a real product.
+
+## Context:
+This project is an "AI GitHub Repo Reader".
+Currently it:
+- Takes a repo URL
+- Reads basic files
+- Shows simple output
+
+This is too basic.
 
 ## Goal:
-Build an AI Software Engineer Agent that can analyze a GitHub repository, understand the codebase, and suggest improvements, refactors, and bug fixes.
+Upgrade this into a production-ready AI developer tool.
 
-## Tech Stack:
-- Frontend: Next.js (App Router) + Tailwind CSS
-- Backend: Node.js (API routes or Express)
-- AI: OpenAI API (or compatible)
-- Optional: LangChain or simple agent loop
-- GitHub API integration
+---
 
-## Core Features:
+## TASK 1: Add Repository Chat (RAG)
 
-1. Repository Input:
-- User enters a GitHub repo URL
-- Fetch repo files using GitHub API
-- Focus on important files (README, src/, package.json)
+Implement a feature where users can chat with the repository.
 
-2. Code Understanding:
-- Parse and summarize:
-  - Project purpose
-  - Tech stack
-  - Folder structure
-- Identify key modules and logic
+Requirements:
+- Extract code from repo files
+- Create embeddings
+- Store in vector DB (use simple in-memory or local first)
+- Implement retrieval (RAG)
+- UI:
+  - Chat input box
+  - Chat history
+- User can ask:
+  - “Explain this project”
+  - “Where is authentication handled?”
+  - “What does this function do?”
 
-3. AI Agent Capabilities:
-- Suggest improvements:
-  - Code quality issues
-  - Performance optimizations
-  - Best practices
-- Detect potential bugs or bad patterns
-- Suggest refactored code snippets
+---
 
-4. Output:
-- Structured response:
-  - Summary
-  - Issues found
-  - Suggested fixes
-  - Improved code snippets
+## TASK 2: Add File Tree UI
 
-5. UI:
-- Input field for repo URL
-- Button: "Analyze Repo"
+- Show repo structure like VS Code sidebar
+- Highlight:
+  - Important files (README, package.json)
+  - Problematic files (large / complex)
+
+---
+
+## TASK 3: Code Analysis Engine
+
+Enhance backend to return structured output:
+
+Return:
+- Summary
+- Tech stack detection
+- Issues
+- Suggestions
+- Code quality score (1–10)
+
+---
+
+## TASK 4: UI Improvements
+
+Improve frontend using:
+- Next.js App Router
+- Tailwind
+
+Add:
+- Clean dashboard layout
 - Sections:
-  - Summary
+  - Repo Overview
   - Issues
   - Suggestions
+  - Chat
 
-## Requirements:
-- Clean and modular code structure
-- Use async/await properly
-- Error handling for API failures
-- Do NOT overcomplicate architecture
-- Keep it beginner-friendly but scalable
+---
 
-## Output format:
-- Generate full working project structure
-- Include:
-  - Folder structure
-  - Key files with code
-  - API routes
-  - Frontend pages/components
+## TASK 5: Project Structure
 
-## Bonus (if possible):
-- Add “Generate PR-style diff” feature
-- Add loading states in UI
-- Add simple caching for repo data
+Refactor project into:
 
-## Important:
-- Think step-by-step before coding
-- Prefer clarity over cleverness
-- Write production-quality code, not demo code
+/app (frontend)
+/api (backend)
+/lib (AI logic)
+/components (UI)
+/utils
+
+---
+
+## TASK 6: Clean Engineering Practices
+
+- Use async/await
+- Add error handling
+- Modular code
+- No overengineering
+
+---
+
+## OUTPUT FORMAT:
+
+1. Show updated folder structure
+2. Provide key files with code
+3. Explain how features connect
+4. Keep it clean and production-ready
+
+---
+
+## IMPORTANT:
+- Do NOT build everything at once blindly
+- First design architecture
+- Then implement step-by-step
+- Prefer clarity over complexity

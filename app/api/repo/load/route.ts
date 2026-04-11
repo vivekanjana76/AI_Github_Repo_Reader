@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 
 import { isAppError } from "@/lib/errors";
 import { getRepoContext } from "@/lib/github";
-import { analyzeRepository } from "@/lib/openrouter";
+import type { RepoLoadResponse } from "@/lib/types";
 
-type AnalyzeRequestBody = {
+type LoadRequestBody = {
   repoUrl?: string;
 };
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as AnalyzeRequestBody;
+    const body = (await request.json()) as LoadRequestBody;
     const repoUrl = body.repoUrl?.trim();
 
     if (!repoUrl) {
@@ -18,10 +18,9 @@ export async function POST(request: Request) {
     }
 
     const repo = await getRepoContext(repoUrl);
-    const analysis = await analyzeRepository(repo);
-
-    return NextResponse.json({
+    const payload: RepoLoadResponse = {
       repo: {
+        repoUrl: repo.repoUrl,
         owner: repo.owner,
         name: repo.name,
         defaultBranch: repo.defaultBranch,
@@ -29,14 +28,15 @@ export async function POST(request: Request) {
         fileCount: repo.fileCount,
         analyzedFiles: repo.selectedFiles.map((file) => file.path),
         dominantDirectories: repo.dominantDirectories
-      },
-      analysis
-    });
+      }
+    };
+
+    return NextResponse.json(payload);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Something went wrong while analyzing the repository.";
+    const message = error instanceof Error ? error.message : "Unable to load repository.";
     const status = isAppError(error) ? error.statusCode : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
 }
+
