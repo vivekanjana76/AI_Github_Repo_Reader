@@ -38,62 +38,76 @@ function getResponseText(payload: OpenRouterResponse) {
 
 async function requestAnalysis(repo: RepoContext, repairInstruction?: string) {
   const { apiKey, model, appUrl } = getOpenRouterConfig();
+  const baseMessages = [
+    {
+      role: "system",
+      content:
+        "You are a practical senior software engineer. Return valid JSON only and stay grounded in the repository files."
+    },
+    {
+      role: "user",
+      content: repairInstruction
+        ? `${buildAnalysisPrompt(repo)}\n\nAdditional repair instruction:\n${repairInstruction}`
+        : buildAnalysisPrompt(repo)
+    }
+  ];
 
-  let response: Response;
+  for (const useStructuredOutput of [true, false]) {
+    let response: Response;
 
-  try {
-    response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      signal: AbortSignal.timeout(45_000),
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": appUrl,
-        "X-Title": "AI Engineer Agent"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 2400,
-        response_format: {
-          type: "json_object"
+    try {
+      response = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        signal: AbortSignal.timeout(45_000),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": appUrl,
+          "X-Title": "AI Engineer Agent"
         },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a practical senior software engineer. Return valid JSON only and stay grounded in the repository files."
-          },
-          {
-            role: "user",
-            content: repairInstruction
-              ? `${buildAnalysisPrompt(repo)}\n\nAdditional repair instruction:\n${repairInstruction}`
-              : buildAnalysisPrompt(repo)
-          }
-        ]
-      })
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new AppError("The model took too long to respond. Try a smaller repo or try again.", 504);
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          max_tokens: 2400,
+          ...(useStructuredOutput
+            ? {
+                response_format: {
+                  type: "json_object"
+                }
+              }
+            : {}),
+          messages: baseMessages
+        })
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new AppError("The model took too long to respond. Try a smaller repo or try again.", 504);
+      }
+
+      throw error;
     }
 
-    throw error;
+    const rawText = await response.text();
+    let payload: OpenRouterResponse | null = null;
+
+    try {
+      payload = JSON.parse(rawText) as OpenRouterResponse;
+    } catch {
+      if (useStructuredOutput) {
+        continue;
+      }
+
+      throw new AppError("OpenRouter returned a non-JSON response.", 502);
+    }
+
+    if (!response.ok) {
+      throw new AppError(payload.error?.message || "OpenRouter request failed.", response.status);
+    }
+
+    return payload;
   }
 
-  let payload: OpenRouterResponse;
-
-  try {
-    payload = (await response.json()) as OpenRouterResponse;
-  } catch {
-    throw new AppError("OpenRouter returned a non-JSON response.", 502);
-  }
-
-  if (!response.ok) {
-    throw new AppError(payload.error?.message || "OpenRouter request failed.", response.status);
-  }
-
-  return payload;
+  throw new AppError("OpenRouter request failed.", 502);
 }
 
 export async function analyzeRepository(repo: RepoContext): Promise<AnalysisResult> {

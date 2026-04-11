@@ -9,8 +9,7 @@ export function getOpenRouterConfig() {
 
   return {
     apiKey,
-    model: process.env.OPENROUTER_MODEL?.trim() || "openai/gpt-4.1-mini",
+    model: process.env.OPENROUTER_MODEL?.trim() || "openrouter/free",
     appUrl: process.env.APP_URL?.trim() || "http://localhost:3000"
   };
 }
-
