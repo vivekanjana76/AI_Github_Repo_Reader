@@ -1,4 +1,6 @@
 import { createTtlCache } from "@/lib/cache";
+import { AppError } from "@/lib/errors";
+import { getOpenRouterConfig } from "@/lib/env";
 import { buildAnalysisPrompt } from "@/lib/prompt";
 import type { AnalysisResult, RepoContext } from "@/lib/types";
 import { extractJsonObject, normalizeAnalysisResult } from "@/lib/utils";
@@ -9,7 +11,7 @@ const analysisCache = createTtlCache<AnalysisResult>(1000 * 60 * 10);
 type OpenRouterResponse = {
   choices?: Array<{
     message?: {
-      content?: string;
+      content?: string | Array<{ type?: string; text?: string }>;
     };
   }>;
   error?: {
@@ -17,66 +19,119 @@ type OpenRouterResponse = {
   };
 };
 
+function getResponseText(payload: OpenRouterResponse) {
+  const content = payload.choices?.[0]?.message?.content;
+
+  if (!content) {
+    return "";
+  }
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+}
+
+async function requestAnalysis(repo: RepoContext, repairInstruction?: string) {
+  const { apiKey, model, appUrl } = getOpenRouterConfig();
+
+  let response: Response;
+
+  try {
+    response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(45_000),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": appUrl,
+        "X-Title": "AI Engineer Agent"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 2400,
+        response_format: {
+          type: "json_object"
+        },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a practical senior software engineer. Return valid JSON only and stay grounded in the repository files."
+          },
+          {
+            role: "user",
+            content: repairInstruction
+              ? `${buildAnalysisPrompt(repo)}\n\nAdditional repair instruction:\n${repairInstruction}`
+              : buildAnalysisPrompt(repo)
+          }
+        ]
+      })
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new AppError("The model took too long to respond. Try a smaller repo or try again.", 504);
+    }
+
+    throw error;
+  }
+
+  let payload: OpenRouterResponse;
+
+  try {
+    payload = (await response.json()) as OpenRouterResponse;
+  } catch {
+    throw new AppError("OpenRouter returned a non-JSON response.", 502);
+  }
+
+  if (!response.ok) {
+    throw new AppError(payload.error?.message || "OpenRouter request failed.", response.status);
+  }
+
+  return payload;
+}
+
 export async function analyzeRepository(repo: RepoContext): Promise<AnalysisResult> {
-  const cacheKey = `${repo.owner}/${repo.name}`;
+  const cacheKey = `${repo.owner}/${repo.name}:${repo.defaultBranch}`;
   const cached = analysisCache.get(cacheKey);
 
   if (cached) {
     return cached;
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing OPENROUTER_API_KEY. Add it to your environment before analyzing.");
-  }
-
-  const model = process.env.OPENROUTER_MODEL || "openrouter/free";
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
-
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": appUrl,
-      "X-Title": "AI Engineer Agent"
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 2400,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a practical senior software engineer. Return valid JSON only and stay grounded in the repository files."
-        },
-        {
-          role: "user",
-          content: buildAnalysisPrompt(repo)
-        }
-      ]
-    })
-  });
-
-  const payload = (await response.json()) as OpenRouterResponse;
-
-  if (!response.ok) {
-    throw new Error(payload.error?.message || "OpenRouter request failed.");
-  }
-
-  const content = payload.choices?.[0]?.message?.content;
+  let payload = await requestAnalysis(repo);
+  let content = getResponseText(payload);
 
   if (!content) {
-    throw new Error("OpenRouter returned an empty response.");
+    throw new AppError("OpenRouter returned an empty response.", 502);
   }
 
-  const jsonText = extractJsonObject(content);
-  const normalized = normalizeAnalysisResult(JSON.parse(jsonText));
+  let normalized: AnalysisResult;
+
+  try {
+    const jsonText = extractJsonObject(content);
+    normalized = normalizeAnalysisResult(JSON.parse(jsonText));
+  } catch {
+    payload = await requestAnalysis(
+      repo,
+      "Your previous reply was not valid JSON. Return only a single valid JSON object matching the schema."
+    );
+    content = getResponseText(payload);
+
+    if (!content) {
+      throw new AppError("OpenRouter returned an empty response.", 502);
+    }
+
+    const jsonText = extractJsonObject(content);
+    normalized = normalizeAnalysisResult(JSON.parse(jsonText));
+  }
 
   analysisCache.set(cacheKey, normalized);
 
   return normalized;
 }
-

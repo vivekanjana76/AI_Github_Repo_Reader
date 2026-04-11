@@ -1,21 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { AnalysisResult } from "@/lib/types";
-import { cn } from "@/lib/utils";
-
-type ApiResponse = {
-  repo: {
-    owner: string;
-    name: string;
-    defaultBranch: string;
-    description: string | null;
-    fileCount: number;
-    analyzedFiles: string[];
-  };
-  analysis: AnalysisResult;
-};
+import type { RepoResponsePayload } from "@/lib/types";
+import { cn, normalizeGitHubRepoUrl } from "@/lib/utils";
 
 const severityStyles = {
   high: "border-red-200 bg-red-50 text-red-700",
@@ -27,35 +15,90 @@ export function RepoAnalyzer() {
   const [repoUrl, setRepoUrl] = useState("https://github.com/vercel/next.js");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ApiResponse | null>(null);
+  const [result, setResult] = useState<RepoResponsePayload | null>(null);
+  const [requestPhase, setRequestPhase] = useState("Waiting for a repository URL.");
+  const [recentRepos, setRecentRepos] = useState<string[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const savedRepos = window.localStorage.getItem("recent-repos");
+
+    if (savedRepos) {
+      try {
+        setRecentRepos(JSON.parse(savedRepos) as string[]);
+      } catch {
+        window.localStorage.removeItem("recent-repos");
+      }
+    }
+
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  function rememberRepo(nextUrl: string) {
+    const updated = [nextUrl, ...recentRepos.filter((url) => url !== nextUrl)].slice(0, 5);
+    setRecentRepos(updated);
+    window.localStorage.setItem("recent-repos", JSON.stringify(updated));
+  }
 
   async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setIsLoading(true);
     setError(null);
+    setRequestPhase("Validating repository URL...");
 
     try {
+      let normalizedUrl: string;
+
+      try {
+        normalizedUrl = normalizeGitHubRepoUrl(repoUrl);
+      } catch {
+        throw new Error("Please enter a valid GitHub repository URL like https://github.com/owner/repo.");
+      }
+
+      setRepoUrl(normalizedUrl);
+      rememberRepo(normalizedUrl);
+      setRequestPhase("Fetching repository structure from GitHub...");
+
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ repoUrl })
+        body: JSON.stringify({ repoUrl: normalizedUrl }),
+        signal: controller.signal
       });
 
-      const payload = (await response.json()) as ApiResponse | { error: string };
+      setRequestPhase("Generating the engineering review...");
+      const payload = (await response.json()) as RepoResponsePayload | { error: string };
 
       if (!response.ok || !("analysis" in payload)) {
         const message = "error" in payload ? payload.error : "Analysis failed.";
         throw new Error(message);
       }
 
+      if (abortControllerRef.current !== controller) {
+        return;
+      }
+
       setResult(payload);
+      setRequestPhase("Analysis ready.");
     } catch (caughtError) {
+      if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+        return;
+      }
+
       setResult(null);
       setError(caughtError instanceof Error ? caughtError.message : "Analysis failed.");
+      setRequestPhase("Analysis stopped.");
     } finally {
-      setIsLoading(false);
+      if (abortControllerRef.current === controller) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -83,6 +126,26 @@ export function RepoAnalyzer() {
             />
           </label>
 
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">Examples</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "https://github.com/vercel/next.js",
+                "https://github.com/t3-oss/create-t3-app",
+                "https://github.com/facebook/react"
+              ].map((example) => (
+                <button
+                  key={example}
+                  className="rounded-full border border-ink/10 bg-white px-3 py-1 text-xs text-ink/70 transition hover:border-tide hover:text-tide"
+                  onClick={() => setRepoUrl(example)}
+                  type="button"
+                >
+                  {example.replace("https://github.com/", "")}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <button
             className="inline-flex w-full items-center justify-center rounded-2xl bg-ink px-5 py-3 text-base font-semibold text-white transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/50"
             disabled={isLoading}
@@ -90,6 +153,26 @@ export function RepoAnalyzer() {
           >
             {isLoading ? "Analyzing repository..." : "Analyze Repo"}
           </button>
+
+          <p className="text-sm text-ink/60">{requestPhase}</p>
+
+          {recentRepos.length > 0 ? (
+            <div className="rounded-2xl border border-ink/10 bg-white/60 p-4">
+              <p className="text-sm font-semibold text-ink/70">Recent repositories</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {recentRepos.map((url) => (
+                  <button
+                    key={url}
+                    className="rounded-full border border-ink/10 bg-mist px-3 py-1 text-xs text-ink/70 transition hover:border-tide hover:text-tide"
+                    onClick={() => setRepoUrl(url)}
+                    type="button"
+                  >
+                    {url.replace("https://github.com/", "")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="rounded-2xl border border-tide/15 bg-tide/5 p-4 text-sm leading-6 text-ink/75">
             <p className="font-semibold text-tide">What happens under the hood</p>
@@ -109,9 +192,7 @@ export function RepoAnalyzer() {
           </div>
         ) : null}
 
-        {!result && !isLoading ? (
-          <EmptyState />
-        ) : null}
+        {!result && !isLoading ? <EmptyState /> : null}
 
         {isLoading ? <LoadingState /> : null}
 
@@ -126,6 +207,9 @@ export function RepoAnalyzer() {
                   <h2 className="mt-2 font-[var(--font-display)] text-3xl font-semibold text-ink">
                     {result.repo.owner}/{result.repo.name}
                   </h2>
+                  {result.repo.description ? (
+                    <p className="mt-3 text-sm text-ink/55">{result.repo.description}</p>
+                  ) : null}
                   <p className="mt-2 max-w-3xl text-base leading-7 text-ink/70">
                     {result.analysis.summary.projectPurpose}
                   </p>
@@ -133,6 +217,7 @@ export function RepoAnalyzer() {
                 <div className="rounded-2xl border border-ink/10 bg-mist px-4 py-3 text-sm text-ink/70">
                   <p>{result.repo.fileCount} files discovered</p>
                   <p>{result.repo.analyzedFiles.length} files analyzed</p>
+                  <p>Branch: {result.repo.defaultBranch}</p>
                 </div>
               </div>
             </div>
@@ -142,6 +227,7 @@ export function RepoAnalyzer() {
                 <InfoList title="Tech stack" items={result.analysis.summary.techStack} />
                 <InfoList title="Key modules" items={result.analysis.summary.keyModules} />
                 <InfoList title="Folder structure" items={result.analysis.summary.folderStructure} />
+                <InfoList title="Dominant directories" items={result.repo.dominantDirectories} />
                 <InfoList title="Analyzed files" items={result.repo.analyzedFiles} />
               </div>
             </ResultCard>
@@ -258,7 +344,7 @@ function InfoList({ title, items }: { title: string; items: string[] }) {
       ) : (
         <ul className="mt-4 space-y-2 text-base leading-7 text-ink/75">
           {items.map((item) => (
-            <li key={item}>• {item}</li>
+            <li key={item}>- {item}</li>
           ))}
         </ul>
       )}

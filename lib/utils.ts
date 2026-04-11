@@ -15,6 +15,25 @@ export function extractJsonObject(text: string) {
   return text.slice(firstBrace, lastBrace + 1);
 }
 
+export function normalizeGitHubRepoUrl(repoUrl: string) {
+  const normalized = new URL(repoUrl.trim());
+  const [owner, rawRepo] = normalized.pathname.split("/").filter(Boolean);
+
+  if (!owner || !rawRepo) {
+    throw new Error("The URL must look like https://github.com/owner/repo.");
+  }
+
+  return `https://github.com/${owner}/${rawRepo.replace(/\.git$/, "")}`;
+}
+
+export function truncateText(text: string, maxLength: number) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength)}\n... [truncated]`;
+}
+
 export function normalizeAnalysisResult(payload: unknown): AnalysisResult {
   const candidate = payload as Partial<AnalysisResult>;
 
@@ -31,4 +50,3 @@ export function normalizeAnalysisResult(payload: unknown): AnalysisResult {
     prDiff: candidate.prDiff ?? null
   };
 }
-

@@ -1,5 +1,7 @@
 import { createTtlCache } from "@/lib/cache";
+import { AppError } from "@/lib/errors";
 import type { RepoContext, RepoFile } from "@/lib/types";
+import { normalizeGitHubRepoUrl, truncateText } from "@/lib/utils";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const MAX_FILE_COUNT = 14;
@@ -56,17 +58,17 @@ export function parseGitHubUrl(repoUrl: string): RepoIdentity {
   try {
     normalized = new URL(repoUrl.trim());
   } catch {
-    throw new Error("Please enter a valid GitHub repository URL.");
+    throw new AppError("Please enter a valid GitHub repository URL.", 400);
   }
 
   if (normalized.hostname !== "github.com") {
-    throw new Error("Only public GitHub repository URLs are supported.");
+    throw new AppError("Only public GitHub repository URLs are supported.", 400);
   }
 
   const [owner, rawRepo] = normalized.pathname.split("/").filter(Boolean);
 
   if (!owner || !rawRepo) {
-    throw new Error("The URL must look like https://github.com/owner/repo.");
+    throw new AppError("The URL must look like https://github.com/owner/repo.", 400);
   }
 
   return {
@@ -76,21 +78,32 @@ export function parseGitHubUrl(repoUrl: string): RepoIdentity {
 }
 
 async function githubFetch<T>(path: string) {
-  const response = await fetch(`${GITHUB_API_BASE}${path}`, {
-    headers: getGitHubHeaders(),
-    next: { revalidate: 0 }
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${GITHUB_API_BASE}${path}`, {
+      headers: getGitHubHeaders(),
+      next: { revalidate: 0 },
+      signal: AbortSignal.timeout(20_000)
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new AppError("GitHub took too long to respond. Try again in a moment.", 504);
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error("Repository not found. Double-check the URL and that it is public.");
+      throw new AppError("Repository not found. Double-check the URL and that it is public.", 404);
     }
 
     if (response.status === 403) {
-      throw new Error("GitHub API rate limit hit. Add a GitHub token or try again shortly.");
+      throw new AppError("GitHub API rate limit hit. Add a GitHub token or try again shortly.", 429);
     }
 
-    throw new Error(`GitHub request failed with status ${response.status}.`);
+    throw new AppError(`GitHub request failed with status ${response.status}.`, response.status);
   }
 
   return (await response.json()) as T;
@@ -129,7 +142,9 @@ function isTextPath(path: string) {
     ".git/",
     "package-lock.json",
     "pnpm-lock.yaml",
-    "yarn.lock"
+    "yarn.lock",
+    ".min.js",
+    ".min.css"
   ];
 
   if (blockedFragments.some((fragment) => lowerPath.includes(fragment))) {
@@ -137,6 +152,19 @@ function isTextPath(path: string) {
   }
 
   return allowed.some((extension) => lowerPath.endsWith(extension));
+}
+
+function isLikelyGeneratedContent(content: string) {
+  if (content.length > 8000 && !content.includes("\n")) {
+    return true;
+  }
+
+  const denseLine = content
+    .split("\n")
+    .slice(0, 12)
+    .some((line) => line.length > 500);
+
+  return denseLine;
 }
 
 function scorePath(path: string) {
@@ -181,68 +209,125 @@ async function fetchFileContent(owner: string, repo: string, path: string) {
 
 function buildStructureSample(entries: GitHubTreeEntry[]) {
   return entries
+    .sort((left, right) => left.path.localeCompare(right.path))
     .slice(0, 120)
     .map((entry) => (entry.type === "tree" ? `${entry.path}/` : entry.path));
 }
 
+function getDominantDirectories(entries: GitHubTreeEntry[]) {
+  const counts = new Map<string, number>();
+
+  for (const entry of entries) {
+    const directory = entry.path.includes("/") ? entry.path.split("/")[0] : "root";
+    counts.set(directory, (counts.get(directory) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6)
+    .map(([directory, count]) => `${directory} (${count})`);
+}
+
+function pickInterestingFiles(entries: GitHubTreeEntry[]) {
+  const ranked = entries
+    .filter((entry) => entry.type === "blob" && isTextPath(entry.path) && (entry.size ?? 0) <= MAX_FILE_BYTES)
+    .sort((left, right) => scorePath(right.path) - scorePath(left.path));
+
+  const chosen: GitHubTreeEntry[] = [];
+  const seenDirectories = new Set<string>();
+
+  for (const entry of ranked) {
+    const directory = entry.path.includes("/") ? entry.path.split("/")[0] : "root";
+
+    if (!seenDirectories.has(directory) || chosen.length < Math.ceil(MAX_FILE_COUNT / 2)) {
+      chosen.push(entry);
+      seenDirectories.add(directory);
+    }
+
+    if (chosen.length >= MAX_FILE_COUNT) {
+      break;
+    }
+  }
+
+  if (chosen.length < MAX_FILE_COUNT) {
+    for (const entry of ranked) {
+      if (chosen.some((selected) => selected.path === entry.path)) {
+        continue;
+      }
+
+      chosen.push(entry);
+
+      if (chosen.length >= MAX_FILE_COUNT) {
+        break;
+      }
+    }
+  }
+
+  return chosen;
+}
+
 export async function getRepoContext(repoUrl: string): Promise<RepoContext> {
-  const cached = repoCache.get(repoUrl);
+  const normalizedRepoUrl = normalizeGitHubRepoUrl(repoUrl);
+  const cached = repoCache.get(normalizedRepoUrl);
 
   if (cached) {
     return cached;
   }
 
-  const { owner, name } = parseGitHubUrl(repoUrl);
+  const { owner, name } = parseGitHubUrl(normalizedRepoUrl);
   const repo = await githubFetch<RepoResponse>(`/repos/${owner}/${name}`);
   const branch = await githubFetch<BranchResponse>(`/repos/${owner}/${name}/branches/${repo.default_branch}`);
   const tree = await githubFetch<{ tree: GitHubTreeEntry[] }>(
     `/repos/${owner}/${name}/git/trees/${branch.commit.sha}?recursive=1`
   );
 
-  const interestingFiles = tree.tree
-    .filter((entry) => entry.type === "blob" && isTextPath(entry.path) && (entry.size ?? 0) <= MAX_FILE_BYTES)
-    .sort((left, right) => scorePath(right.path) - scorePath(left.path))
-    .slice(0, MAX_FILE_COUNT * 2);
+  const interestingFiles = pickInterestingFiles(tree.tree);
+  const downloadedFiles = await Promise.all(
+    interestingFiles.map((entry) => fetchFileContent(owner, name, entry.path))
+  );
 
   const selectedFiles: RepoFile[] = [];
   let totalChars = 0;
 
-  for (const entry of interestingFiles) {
-    if (selectedFiles.length >= MAX_FILE_COUNT || totalChars >= MAX_TOTAL_CHARS) {
-      break;
-    }
-
-    const file = await fetchFileContent(owner, name, entry.path);
-
+  for (const file of downloadedFiles) {
     if (!file?.content.trim()) {
       continue;
     }
 
-    if (totalChars + file.content.length > MAX_TOTAL_CHARS) {
+    if (isLikelyGeneratedContent(file.content)) {
       continue;
     }
 
-    selectedFiles.push(file);
-    totalChars += file.content.length;
+    const trimmedContent = truncateText(file.content, 7000);
+
+    if (totalChars + trimmedContent.length > MAX_TOTAL_CHARS) {
+      continue;
+    }
+
+    selectedFiles.push({
+      ...file,
+      content: trimmedContent
+    });
+    totalChars += trimmedContent.length;
   }
 
   if (selectedFiles.length === 0) {
-    throw new Error("No supported text files were found to analyze in this repository.");
+    throw new AppError("No supported text files were found to analyze in this repository.", 422);
   }
 
   const result: RepoContext = {
-    repoUrl,
+    repoUrl: normalizedRepoUrl,
     owner,
     name,
     defaultBranch: repo.default_branch,
     description: repo.description,
     fileCount: tree.tree.length,
     structure: buildStructureSample(tree.tree),
-    selectedFiles
+    selectedFiles,
+    dominantDirectories: getDominantDirectories(tree.tree)
   };
 
-  repoCache.set(repoUrl, result);
+  repoCache.set(normalizedRepoUrl, result);
 
   return result;
 }
-

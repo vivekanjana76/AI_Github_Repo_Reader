@@ -64,6 +64,7 @@ Repository:
 - Default branch: ${repo.defaultBranch}
 - Description: ${repo.description ?? "No description"}
 - Total files in tree: ${repo.fileCount}
+- Dominant directories: ${repo.dominantDirectories.join(", ")}
 
 Repository structure sample:
 ${repo.structure.join("\n")}
@@ -72,4 +73,3 @@ Selected files:
 ${fileBlock}
 `.trim();
 }
-

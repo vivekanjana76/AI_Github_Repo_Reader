@@ -16,6 +16,7 @@ export type RepoContext = {
   fileCount: number;
   structure: string[];
   selectedFiles: RepoFile[];
+  dominantDirectories: string[];
 };
 
 export type AnalysisIssue = {
@@ -59,3 +60,15 @@ export type AnalysisResult = {
   prDiff: AnalysisPRDiff | null;
 };
 
+export type RepoResponsePayload = {
+  repo: {
+    owner: string;
+    name: string;
+    defaultBranch: string;
+    description: string | null;
+    fileCount: number;
+    analyzedFiles: string[];
+    dominantDirectories: string[];
+  };
+  analysis: AnalysisResult;
+};

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAppError } from "@/lib/errors";
 import { getRepoContext } from "@/lib/github";
 import { analyzeRepository } from "@/lib/openrouter";
 
@@ -26,14 +27,16 @@ export async function POST(request: Request) {
         defaultBranch: repo.defaultBranch,
         description: repo.description,
         fileCount: repo.fileCount,
-        analyzedFiles: repo.selectedFiles.map((file) => file.path)
+        analyzedFiles: repo.selectedFiles.map((file) => file.path),
+        dominantDirectories: repo.dominantDirectories
       },
       analysis
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Something went wrong while analyzing the repository.";
+    const status = isAppError(error) ? error.statusCode : 500;
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status });
   }
 }
