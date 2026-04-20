@@ -87,3 +87,29 @@ export type RepoChatResponse = {
     reason: string;
   }>;
 };
+
+export type AnalysisSeverity = "high" | "medium" | "low";
+
+export type RepoAnalysisIssue = {
+  title: string;
+  severity: AnalysisSeverity;
+  explanation: string;
+  filePaths: string[];
+};
+
+export type RepoAnalysisSuggestion = {
+  title: string;
+  details: string;
+};
+
+export type RepoAnalysis = {
+  summary: string;
+  techStack: string[];
+  issues: RepoAnalysisIssue[];
+  suggestions: RepoAnalysisSuggestion[];
+  codeQualityScore: number;
+};
+
+export type RepoAnalysisResponse = {
+  analysis: RepoAnalysis;
+};

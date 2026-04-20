@@ -10,11 +10,11 @@ export default function Home() {
             AI Engineer Agent
           </p>
           <h1 className="font-[var(--font-display)] text-4xl font-bold tracking-tight text-ink sm:text-6xl">
-            Chat with a GitHub repository using simple RAG.
+            Explore, analyze, and chat with a GitHub repository.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-ink/75">
-            Task 1 is intentionally narrow: load a public repo, retrieve the most relevant code
-            snippets for each question, and answer from those snippets with file citations.
+            The current build covers repo chat, file tree navigation, and structured code analysis
+            so you can understand a project faster from one place.
           </p>
         </div>
         <RepoChat />
