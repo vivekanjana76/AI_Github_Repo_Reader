@@ -3,6 +3,7 @@ import { getOpenRouterConfig } from "@/lib/env";
 import type { ChatTurn, RepoContext, RetrievedChunk } from "@/lib/types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MAX_CONTEXT_CHARS = 10_500;
 
 type OpenRouterResponse = {
   choices?: Array<{
@@ -13,6 +14,13 @@ type OpenRouterResponse = {
   error?: {
     message?: string;
   };
+};
+
+type RepoQuestionInput = {
+  repo: RepoContext;
+  question: string;
+  history: ChatTurn[];
+  chunks: RetrievedChunk[];
 };
 
 function getResponseText(payload: OpenRouterResponse) {
@@ -32,31 +40,53 @@ function getResponseText(payload: OpenRouterResponse) {
     .trim();
 }
 
-type RepoQuestionInput = {
-  repo: RepoContext;
-  question: string;
-  history: ChatTurn[];
-  chunks: RetrievedChunk[];
-};
+function summarizeHistory(history: ChatTurn[]) {
+  return history
+    .slice(-6)
+    .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
+    .join("\n");
+}
+
+function buildContextBlock(chunks: RetrievedChunk[]) {
+  const sections: string[] = [];
+  let totalChars = 0;
+
+  for (const chunk of chunks) {
+    const section = [
+      `Path: ${chunk.path}`,
+      `Lines: ${chunk.lineStart}-${chunk.lineEnd}`,
+      `Retrieval score: ${chunk.score}`,
+      `Why retrieved: ${chunk.reason || "relevant lexical overlap"}`,
+      `Matched terms: ${chunk.matchedTerms.join(", ") || "none"}`,
+      "Snippet:",
+      chunk.content
+    ].join("\n");
+
+    if (totalChars + section.length > MAX_CONTEXT_CHARS && sections.length > 0) {
+      break;
+    }
+
+    sections.push(section);
+    totalChars += section.length;
+  }
+
+  return sections.join("\n\n---\n\n");
+}
 
 async function requestChatAnswer({ repo, question, history, chunks }: RepoQuestionInput) {
   const { apiKey, model, appUrl } = getOpenRouterConfig();
-  const historyText = history
-    .slice(-6)
-    .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-    .join("\n");
-  const contextText = chunks
-    .map(
-      (chunk, index) =>
-        `Source ${index + 1}: ${chunk.path}\n${chunk.content}\n---`
-    )
-    .join("\n");
+  const historyText = summarizeHistory(history);
+  const contextText = buildContextBlock(chunks);
 
   const messages = [
     {
       role: "system",
-      content:
-        "You are a helpful AI engineer. Answer only from the provided repository context. If the context is not enough, say that clearly. Mention file paths when useful."
+      content: [
+        "You are a helpful AI engineer answering questions about a GitHub repository.",
+        "Use only the supplied repository context and recent chat history.",
+        "If the retrieved context is insufficient, say so clearly instead of guessing.",
+        "When citing implementation details, reference file paths and line ranges like `src/app.ts:10-24`."
+      ].join(" ")
     },
     {
       role: "user",
@@ -65,10 +95,10 @@ async function requestChatAnswer({ repo, question, history, chunks }: RepoQuesti
         `Default branch: ${repo.defaultBranch}`,
         `Description: ${repo.description ?? "No description"}`,
         `Dominant directories: ${repo.dominantDirectories.join(", ")}`,
-        historyText ? `Recent chat:\n${historyText}` : "",
-        `Retrieved context:\n${contextText}`,
+        historyText ? `Recent chat history:\n${historyText}` : "",
+        `Retrieved repository context:\n${contextText}`,
         `Question: ${question}`,
-        "Answer in a concise, helpful way. If you reference implementation details, mention the relevant file path."
+        "Answer concisely. Start with the direct answer, then include brief supporting details from the retrieved sources."
       ]
         .filter(Boolean)
         .join("\n\n")
@@ -89,8 +119,8 @@ async function requestChatAnswer({ repo, question, history, chunks }: RepoQuesti
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
-        max_tokens: 900,
+        temperature: 0.15,
+        max_tokens: 1000,
         messages
       })
     });

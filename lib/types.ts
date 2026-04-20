@@ -5,6 +5,20 @@ export type RepoFile = {
   content: string;
 };
 
+export type RepoTreeBadge = "important" | "large" | "complex" | "sampled";
+
+export type RepoTreeEntry = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size: number | null;
+  badges: RepoTreeBadge[];
+};
+
+export type RepoTreeNode = RepoTreeEntry & {
+  children: RepoTreeNode[];
+};
+
 export type RepoContext = {
   repoUrl: string;
   owner: string;
@@ -13,6 +27,7 @@ export type RepoContext = {
   description: string | null;
   fileCount: number;
   structure: string[];
+  treeEntries: RepoTreeEntry[];
   selectedFiles: RepoFile[];
   dominantDirectories: string[];
 };
@@ -21,7 +36,11 @@ export type RetrievedChunk = {
   chunkId: string;
   path: string;
   content: string;
+  lineStart: number;
+  lineEnd: number;
   score: number;
+  matchedTerms: string[];
+  reason: string;
 };
 
 export type RepoSummary = {
@@ -33,6 +52,7 @@ export type RepoSummary = {
   fileCount: number;
   analyzedFiles: string[];
   dominantDirectories: string[];
+  fileTree: RepoTreeNode[];
 };
 
 export type RepoLoadResponse = {
@@ -47,6 +67,10 @@ export type ChatTurn = {
     chunkId: string;
     path: string;
     excerpt: string;
+    lineStart: number;
+    lineEnd: number;
+    score: number;
+    reason: string;
   }>;
 };
 
@@ -57,5 +81,9 @@ export type RepoChatResponse = {
     chunkId: string;
     path: string;
     excerpt: string;
+    lineStart: number;
+    lineEnd: number;
+    score: number;
+    reason: string;
   }>;
 };

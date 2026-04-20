@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isAppError } from "@/lib/errors";
 import { getRepoContext } from "@/lib/github";
 import type { RepoLoadResponse } from "@/lib/types";
+import { buildRepoTree } from "@/lib/utils";
 
 type LoadRequestBody = {
   repoUrl?: string;
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
         description: repo.description,
         fileCount: repo.fileCount,
         analyzedFiles: repo.selectedFiles.map((file) => file.path),
-        dominantDirectories: repo.dominantDirectories
+        dominantDirectories: repo.dominantDirectories,
+        fileTree: buildRepoTree(repo.treeEntries)
       }
     };
 
@@ -39,4 +41,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-

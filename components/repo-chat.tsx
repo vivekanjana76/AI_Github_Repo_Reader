@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { RepoFileTree } from "@/components/repo-file-tree";
 import type { ChatTurn, RepoChatResponse, RepoLoadResponse } from "@/lib/types";
 import { normalizeGitHubRepoUrl } from "@/lib/utils";
 
@@ -156,11 +157,11 @@ export function RepoChat() {
         <form className="space-y-5" onSubmit={handleLoadRepository}>
           <div>
             <h2 className="font-[var(--font-display)] text-2xl font-semibold text-ink">
-              Task 1: Repo Chat
+              Tasks 1-2: Repo Chat + File Tree
             </h2>
             <p className="mt-2 text-sm leading-6 text-ink/65">
-              Load a public GitHub repository, retrieve relevant code snippets, and chat over that
-              context with a simple RAG loop.
+              Load a public GitHub repository, explore its structure like a lightweight editor
+              sidebar, and chat over retrieved code context.
             </p>
           </div>
 
@@ -219,13 +220,20 @@ export function RepoChat() {
           ) : null}
 
           {repo ? (
-            <div className="rounded-3xl border border-ink/10 bg-mist/70 p-5 text-sm leading-6 text-ink/75">
-              <p className="font-semibold text-ink">
-                {repo.owner}/{repo.name}
-              </p>
-              <p className="mt-1">Branch: {repo.defaultBranch}</p>
-              <p>{repo.fileCount} files discovered</p>
-              <p>{repo.analyzedFiles.length} files sampled for RAG</p>
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-ink/10 bg-mist/70 p-5 text-sm leading-6 text-ink/75">
+                <p className="font-semibold text-ink">
+                  {repo.owner}/{repo.name}
+                </p>
+                <p className="mt-1">Branch: {repo.defaultBranch}</p>
+                <p>{repo.fileCount} files discovered</p>
+                <p>{repo.analyzedFiles.length} files sampled for RAG</p>
+              </div>
+
+              <RepoFileTree
+                nodes={repo.fileTree}
+                onSelectFile={(path) => setQuestion(`Explain the role of ${path} in this repository.`)}
+              />
             </div>
           ) : null}
         </form>
@@ -286,7 +294,15 @@ export function RepoChat() {
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/45">Sources</p>
                       {message.sources.map((source) => (
                         <div key={`${source.path}-${source.chunkId}`} className="rounded-2xl bg-mist px-4 py-3">
-                          <p className="text-sm font-semibold text-tide">{source.path}</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-tide">
+                              {source.path}:{source.lineStart}-{source.lineEnd}
+                            </p>
+                            <p className="text-xs uppercase tracking-[0.14em] text-ink/45">
+                              score {source.score}
+                            </p>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-ink/55">{source.reason}</p>
                           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink/70">
                             {source.excerpt}
                           </p>

@@ -26,12 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Question is required." }, { status: 400 });
     }
 
+    const history = Array.isArray(body.history) ? body.history : [];
     const repo = await getRepoContext(repoUrl);
-    const chunks = retrieveRelevantChunks(repo, question);
+    const chunks = retrieveRelevantChunks(repo, question, history);
     const answer = await answerRepoQuestion({
       repo,
       question,
-      history: Array.isArray(body.history) ? body.history : [],
+      history,
       chunks
     });
     const citations = [...new Set(chunks.map((chunk) => chunk.path))];
@@ -42,7 +43,11 @@ export async function POST(request: Request) {
       sources: chunks.map((chunk) => ({
         chunkId: chunk.chunkId,
         path: chunk.path,
-        excerpt: chunk.content
+        excerpt: chunk.content,
+        lineStart: chunk.lineStart,
+        lineEnd: chunk.lineEnd,
+        score: chunk.score,
+        reason: chunk.reason
       }))
     };
 

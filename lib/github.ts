@@ -1,12 +1,13 @@
 import { createTtlCache } from "@/lib/cache";
 import { AppError } from "@/lib/errors";
-import type { RepoContext, RepoFile } from "@/lib/types";
+import type { RepoContext, RepoFile, RepoTreeBadge, RepoTreeEntry } from "@/lib/types";
 import { normalizeGitHubRepoUrl, truncateText } from "@/lib/utils";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const MAX_FILE_COUNT = 14;
 const MAX_FILE_BYTES = 14_000;
 const MAX_TOTAL_CHARS = 80_000;
+const MAX_TREE_UI_ITEMS = 320;
 const repoCache = createTtlCache<RepoContext>(1000 * 60 * 10);
 
 type RepoIdentity = {
@@ -214,6 +215,74 @@ function buildStructureSample(entries: GitHubTreeEntry[]) {
     .map((entry) => (entry.type === "tree" ? `${entry.path}/` : entry.path));
 }
 
+function getBaseName(path: string) {
+  const segments = path.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? path;
+}
+
+function isImportantPath(path: string) {
+  const baseName = getBaseName(path).toLowerCase();
+
+  return (
+    baseName.startsWith("readme") ||
+    baseName === "package.json" ||
+    baseName === "tsconfig.json" ||
+    baseName === "next.config.js" ||
+    baseName === "next.config.ts"
+  );
+}
+
+function isComplexFile(content: string) {
+  const lineCount = content.split("\n").length;
+  const branchSignals = (content.match(/\b(if|switch|case|for|while|catch|async|await)\b/g) ?? []).length;
+
+  return lineCount > 180 || branchSignals > 18;
+}
+
+function buildTreeEntries(entries: GitHubTreeEntry[], selectedFiles: RepoFile[]) {
+  const selectedFileMap = new Map(
+    selectedFiles.map((file) => [
+      file.path,
+      {
+        isComplex: isComplexFile(file.content)
+      }
+    ])
+  );
+
+  return entries
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .slice(0, MAX_TREE_UI_ITEMS)
+    .map((entry) => {
+      const badges: RepoTreeBadge[] = [];
+
+      if (entry.type === "blob") {
+        if (isImportantPath(entry.path)) {
+          badges.push("important");
+        }
+
+        if ((entry.size ?? 0) >= 12_000) {
+          badges.push("large");
+        }
+
+        if (selectedFileMap.has(entry.path)) {
+          badges.push("sampled");
+        }
+
+        if (selectedFileMap.get(entry.path)?.isComplex) {
+          badges.push("complex");
+        }
+      }
+
+      return {
+        name: getBaseName(entry.path),
+        path: entry.path,
+        type: entry.type === "tree" ? "directory" : "file",
+        size: entry.type === "blob" ? (entry.size ?? null) : null,
+        badges
+      } satisfies RepoTreeEntry;
+    });
+}
+
 function getDominantDirectories(entries: GitHubTreeEntry[]) {
   const counts = new Map<string, number>();
 
@@ -323,6 +392,7 @@ export async function getRepoContext(repoUrl: string): Promise<RepoContext> {
     description: repo.description,
     fileCount: tree.tree.length,
     structure: buildStructureSample(tree.tree),
+    treeEntries: buildTreeEntries(tree.tree, selectedFiles),
     selectedFiles,
     dominantDirectories: getDominantDirectories(tree.tree)
   };
