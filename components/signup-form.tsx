@@ -45,12 +45,17 @@ export function SignupForm() {
 
     setIsSubmitting(false);
 
-    if (!result?.ok) {
+    if (!result?.ok || result.error) {
       setError("Account created, but sign-in failed. Please log in manually.");
       return;
     }
 
-    window.location.href = result.url || "/dashboard";
+    if (!result.url || result.url.includes("/api/auth/error")) {
+      setError("Account created, but sign-in failed due to auth configuration. Please log in manually.");
+      return;
+    }
+
+    window.location.href = result.url;
   }
 
   return (

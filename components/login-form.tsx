@@ -27,12 +27,17 @@ export function LoginForm() {
 
     setIsSubmitting(false);
 
-    if (!result?.ok) {
-      setError("Invalid email or password.");
+    if (!result?.ok || result.error) {
+      setError(result?.error === "CredentialsSignin" ? "Invalid email or password." : "Unable to sign in.");
       return;
     }
 
-    window.location.href = result.url || callbackUrl;
+    if (!result.url || result.url.includes("/api/auth/error")) {
+      setError("Sign-in failed due to server auth configuration. Please check NEXTAUTH_SECRET.");
+      return;
+    }
+
+    window.location.href = result.url;
   }
 
   return (

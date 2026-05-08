@@ -32,7 +32,7 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=openrouter/free
 GITHUB_TOKEN=
 APP_URL=http://localhost:3000
-DATABASE_URL=file:./prisma/dev.db
+DATABASE_URL=file:./dev.db
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=replace_with_a_long_random_secret
 ```
@@ -67,6 +67,40 @@ npm run dev
 - NextAuth credentials login is mounted at `app/api/auth/[...nextauth]/route.ts`.
 - Protected routes: `/dashboard`, `/chat`, `/analysis`.
 - Unauthenticated users are redirected to `/login`.
+
+## Docker (Task 8)
+
+This project is container-ready with:
+
+- multi-stage production `Dockerfile`
+- one-shot Prisma migration service
+- persistent SQLite volume for user data
+
+### Run with Docker Compose
+
+1. Create Docker env file:
+
+```bash
+# macOS/Linux
+cp .env.docker.example .env.local
+
+# Windows PowerShell
+Copy-Item .env.docker.example .env.local
+```
+
+2. Start the stack:
+
+```bash
+docker compose up --build
+```
+
+3. Open `http://localhost:3000`
+
+### What Compose does
+
+- `migrate` service runs `prisma migrate deploy`
+- `ai-engineer-app` starts only after migrations succeed
+- SQLite DB is stored in volume `app_data` at `/data/dev.db`
 
 ## Notes
 

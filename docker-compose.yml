@@ -1,9 +1,36 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    env_file:
+      - .env.local
+    environment:
+      DATABASE_URL: file:/data/dev.db
+    volumes:
+      - app_data:/data
+    restart: "no"
+
   ai-engineer-app:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "3000:3000"
     env_file:
       - .env.local
+    environment:
+      DATABASE_URL: file:/data/dev.db
+      APP_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+    volumes:
+      - app_data:/data
+    restart: unless-stopped
+
+volumes:
+  app_data:
