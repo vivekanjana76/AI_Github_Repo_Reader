@@ -12,6 +12,8 @@ A beginner-friendly Next.js app that reviews a public GitHub repository and retu
 - Next.js App Router
 - TypeScript
 - Tailwind CSS
+- NextAuth (credentials auth)
+- Prisma + SQLite
 - GitHub REST API
 - OpenRouter-compatible chat completions API
 
@@ -30,17 +32,26 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=openrouter/free
 GITHUB_TOKEN=
 APP_URL=http://localhost:3000
+DATABASE_URL=file:./prisma/dev.db
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=replace_with_a_long_random_secret
 ```
 
 `GITHUB_TOKEN` is optional, but helps avoid GitHub rate limits.
 
-3. Start the app:
+3. Initialize the database:
+
+```bash
+npx prisma migrate dev --name init_auth
+```
+
+4. Start the app:
 
 ```bash
 npm run dev
 ```
 
-4. Open `http://localhost:3000`
+5. Open `http://localhost:3000`
 
 ## How it works
 
@@ -49,6 +60,13 @@ npm run dev
 3. Important text files are prioritized and downloaded.
 4. A structured prompt is sent to OpenRouter.
 5. The response is normalized into sections for the UI.
+
+## Authentication flow
+
+- `POST /api/auth/signup` creates users with `bcrypt` password hashing.
+- NextAuth credentials login is mounted at `app/api/auth/[...nextauth]/route.ts`.
+- Protected routes: `/dashboard`, `/chat`, `/analysis`.
+- Unauthenticated users are redirected to `/login`.
 
 ## Notes
 

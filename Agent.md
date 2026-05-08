@@ -10,7 +10,36 @@ Currently it:
 This is too basic.
 
 ## Goal:
-Upgrade this into a production-ready AI developer tool.
+Upgrade this into a production-ready AI developer tool with authentication, AI-powered analysis, and interactive features.
+
+---
+
+## TASK 0: Authentication (NEW - HIGH PRIORITY)
+
+Implement a secure authentication system.
+
+### Requirements:
+- Add Login & Signup functionality
+- Use NextAuth (preferred) or JWT-based auth
+- Support:
+  - Email/password login
+  - (Optional) GitHub OAuth
+
+### UI:
+- Create `/login` page
+- Create `/signup` page (optional)
+- Clean, minimal UI with Tailwind
+
+### Behavior:
+- After login → redirect to main dashboard
+- Protect routes:
+  - `/dashboard` (main app)
+  - `/chat`
+  - `/analysis`
+
+### Backend:
+- Store users in database (MongoDB / Prisma)
+- Hash passwords securely (bcrypt)
 
 ---
 
@@ -18,18 +47,22 @@ Upgrade this into a production-ready AI developer tool.
 
 Implement a feature where users can chat with the repository.
 
-Requirements:
+### Requirements:
 - Extract code from repo files
+- Chunk and preprocess content
 - Create embeddings
-- Store in vector DB (use simple in-memory or local first)
+- Store in vector DB (start with in-memory, upgrade later)
 - Implement retrieval (RAG)
-- UI:
-  - Chat input box
-  - Chat history
-- User can ask:
-  - “Explain this project”
-  - “Where is authentication handled?”
-  - “What does this function do?”
+
+### UI:
+- Chat input box
+- Chat history
+- Streaming responses (optional)
+
+### User Queries:
+- “Explain this project”
+- “Where is authentication handled?”
+- “What does this function do?”
 
 ---
 
@@ -46,7 +79,7 @@ Requirements:
 
 Enhance backend to return structured output:
 
-Return:
+### Return:
 - Summary
 - Tech stack detection
 - Issues
@@ -59,10 +92,11 @@ Return:
 
 Improve frontend using:
 - Next.js App Router
-- Tailwind
+- Tailwind CSS
 
-Add:
+### Add:
 - Clean dashboard layout
+- Sidebar (navigation)
 - Sections:
   - Repo Overview
   - Issues
@@ -75,20 +109,46 @@ Add:
 
 Refactor project into:
 
-/app (frontend)
-/api (backend)
-/lib (AI logic)
-/components (UI)
-/utils
+/app (frontend + routes)
+/api (backend routes)
+/lib (AI logic, RAG, embeddings)
+/components (UI components)
+/utils (helpers)
+/db (database config)
 
 ---
 
-## TASK 6: Clean Engineering Practices
+## TASK 6: Database Integration
+
+Add database support (MongoDB / Prisma).
+
+### Store:
+- User data (auth)
+- Repo URLs
+- Analysis results
+- Chat history
+
+---
+
+## TASK 7: Clean Engineering Practices
 
 - Use async/await
-- Add error handling
-- Modular code
+- Add proper error handling
+- Modular architecture
+- Environment variables for secrets
 - No overengineering
+
+---
+
+## TASK 8: DevOps & Deployment (IMPORTANT)
+
+- Dockerize the application
+- Create Dockerfile
+- Ensure app runs via container
+
+### Bonus:
+- Add docker-compose (optional)
+- Prepare for deployment (Vercel / Render)
 
 ---
 
@@ -102,6 +162,7 @@ Refactor project into:
 ---
 
 ## IMPORTANT:
+
 - Do NOT build everything at once blindly
 - First design architecture
 - Then implement step-by-step

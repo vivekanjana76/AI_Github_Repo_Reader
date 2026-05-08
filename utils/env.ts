@@ -1,4 +1,4 @@
-import { AppError } from "@/lib/errors";
+import { AppError } from "@/utils/errors";
 
 export function getOpenRouterConfig() {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -13,3 +13,4 @@ export function getOpenRouterConfig() {
     appUrl: process.env.APP_URL?.trim() || "http://localhost:3000"
   };
 }
+

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { RepoTreeBadge, RepoTreeNode } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/helpers";
 
 type RepoFileTreeProps = {
   nodes: RepoTreeNode[];

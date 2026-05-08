@@ -1,8 +1,8 @@
-import { createTtlCache } from "@/lib/cache";
-import { AppError } from "@/lib/errors";
 import { requestJsonCompletion } from "@/lib/openrouter";
 import type { RepoAnalysis, RepoContext } from "@/lib/types";
-import { truncateText } from "@/lib/utils";
+import { createTtlCache } from "@/utils/cache";
+import { AppError } from "@/utils/errors";
+import { truncateText } from "@/utils/helpers";
 
 const analysisCache = createTtlCache<RepoAnalysis>(1000 * 60 * 10);
 

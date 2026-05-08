@@ -95,3 +95,4 @@ export function buildRepoTree(entries: RepoTreeEntry[]) {
 
   return sortNodes(root);
 }
+

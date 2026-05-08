@@ -11,7 +11,8 @@ import type {
   RepoChatResponse,
   RepoLoadResponse
 } from "@/lib/types";
-import { cn, normalizeGitHubRepoUrl } from "@/lib/utils";
+import { postJson } from "@/utils/client-api";
+import { cn, normalizeGitHubRepoUrl } from "@/utils/helpers";
 
 const EXAMPLE_REPOS = [
   "https://github.com/vercel/next.js",
@@ -37,8 +38,10 @@ export function RepoChat() {
   const [isLoadingRepo, setIsLoadingRepo] = useState(false);
   const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    setIsReady(true);
     const savedRepos = window.localStorage.getItem("recent-repos");
 
     if (!savedRepos) {
@@ -53,28 +56,26 @@ export function RepoChat() {
   }, []);
 
   function rememberRepo(nextUrl: string) {
-    const updated = [nextUrl, ...recentRepos.filter((url) => url !== nextUrl)].slice(0, 5);
-    setRecentRepos(updated);
-    window.localStorage.setItem("recent-repos", JSON.stringify(updated));
+    if (!isReady) {
+      return;
+    }
+
+    setRecentRepos((current) => {
+      const updated = [nextUrl, ...current.filter((url) => url !== nextUrl)].slice(0, 5);
+      window.localStorage.setItem("recent-repos", JSON.stringify(updated));
+      return updated;
+    });
   }
 
   async function fetchAnalysis(nextRepoUrl: string) {
     setIsAnalyzingRepo(true);
 
     try {
-      const response = await fetch("/api/repo/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ repoUrl: nextRepoUrl })
-      });
-
-      const payload = (await response.json()) as RepoAnalysisResponse | { error: string };
-
-      if (!response.ok || !("analysis" in payload)) {
-        throw new Error("error" in payload ? payload.error : "Unable to analyze repository.");
-      }
+      const payload = await postJson<RepoAnalysisResponse>(
+        "/api/repo/analyze",
+        { repoUrl: nextRepoUrl },
+        "Unable to analyze repository."
+      );
 
       setAnalysis(payload.analysis);
     } catch (caughtError) {
@@ -98,19 +99,11 @@ export function RepoChat() {
       setAnalysis(null);
       setLoadState("Fetching repository files from GitHub...");
 
-      const response = await fetch("/api/repo/load", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ repoUrl: normalizedRepoUrl })
-      });
-
-      const payload = (await response.json()) as RepoLoadResponse | { error: string };
-
-      if (!response.ok || !("repo" in payload)) {
-        throw new Error("error" in payload ? payload.error : "Unable to load repository.");
-      }
+      const payload = await postJson<RepoLoadResponse>(
+        "/api/repo/load",
+        { repoUrl: normalizedRepoUrl },
+        "Unable to load repository."
+      );
 
       setRepo(payload.repo);
       setMessages([
@@ -142,6 +135,7 @@ export function RepoChat() {
     }
 
     const nextQuestion = question.trim();
+    const previousMessages = messages;
     const nextMessages = [...messages, { role: "user" as const, content: nextQuestion }];
 
     setError(null);
@@ -150,23 +144,15 @@ export function RepoChat() {
     setIsSendingMessage(true);
 
     try {
-      const response = await fetch("/api/repo/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
+      const payload = await postJson<RepoChatResponse>(
+        "/api/repo/chat",
+        {
           repoUrl: repo.repoUrl,
           question: nextQuestion,
           history: nextMessages.slice(-6)
-        })
-      });
-
-      const payload = (await response.json()) as RepoChatResponse | { error: string };
-
-      if (!response.ok || !("answer" in payload)) {
-        throw new Error("error" in payload ? payload.error : "Unable to answer that question.");
-      }
+        },
+        "Unable to answer that question."
+      );
 
       setMessages((current) => [
         ...current,
@@ -179,7 +165,7 @@ export function RepoChat() {
       ]);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to answer that question.");
-      setMessages(messages);
+      setMessages(previousMessages);
       setQuestion(nextQuestion);
     } finally {
       setIsSendingMessage(false);

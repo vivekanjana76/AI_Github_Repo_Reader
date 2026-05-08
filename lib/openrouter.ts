@@ -1,6 +1,6 @@
-import { AppError } from "@/lib/errors";
-import { getOpenRouterConfig } from "@/lib/env";
 import type { ChatTurn, RepoContext, RetrievedChunk } from "@/lib/types";
+import { getOpenRouterConfig } from "@/utils/env";
+import { AppError } from "@/utils/errors";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_CONTEXT_CHARS = 10_500;

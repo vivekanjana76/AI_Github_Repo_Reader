@@ -1,7 +1,7 @@
-import { createTtlCache } from "@/lib/cache";
-import { AppError } from "@/lib/errors";
 import type { RepoContext, RepoFile, RepoTreeBadge, RepoTreeEntry } from "@/lib/types";
-import { normalizeGitHubRepoUrl, truncateText } from "@/lib/utils";
+import { createTtlCache } from "@/utils/cache";
+import { AppError } from "@/utils/errors";
+import { normalizeGitHubRepoUrl, truncateText } from "@/utils/helpers";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const MAX_FILE_COUNT = 14;
